@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import random
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
@@ -828,6 +829,63 @@ async def process_before_invoke_callbacks(
         [await cb.before_invoke(p) for cb in callbacks]
         return p
     return payload
+
+
+@dataclass
+class _ClientHandle:
+    """Manages a single client worker task.
+
+    Wraps an asyncio.Task (running a client loop in a thread) together with
+    the threading.Event used to signal graceful shutdown and the spawn timestamp.
+    """
+
+    _stop_event: threading.Event
+    _task: asyncio.Task
+    _spawn_time: float  # perf_counter when spawned
+
+    def signal_stop(self) -> None:
+        """Signal this client to stop after its current request."""
+        self._stop_event.set()
+
+    def is_alive(self) -> bool:
+        """Whether the underlying task is still running."""
+        return not self._task.done()
+
+
+def _client_loop(
+    endpoint: Endpoint,
+    payload: list[dict],
+    stop_event: threading.Event,
+    queue: asyncio.Queue,
+    callbacks: "list[Callback] | None",
+    timeout: float = 60.0,
+) -> None:
+    """Synchronous invocation loop for one client thread.
+
+    Sends requests by cycling through payload until stop_event is set.
+    Each response is pushed onto the queue for async processing.
+    """
+    idx = 0
+    while not stop_event.is_set():
+        payload_item = payload[idx]
+        idx = (idx + 1) % len(payload)
+
+        try:
+            payload_item = asyncio.run(
+                process_before_invoke_callbacks(callbacks, payload_item)
+            )
+            response = endpoint.invoke(payload_item)
+        except Exception as e:
+            logger.exception(
+                "Error with invocation in _client_loop with payload %s: %s",
+                payload_item,
+                e,
+            )
+            response = InvocationResponse.error_output(
+                error=str(e),
+            )
+
+        queue._loop.call_soon_threadsafe(queue.put_nowait, response)  # type: ignore[attr-defined]
 
 
 @dataclass
