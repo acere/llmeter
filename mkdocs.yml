@@ -38,6 +38,7 @@ nav:
     - Quantile Confidence Intervals: user_guide/quantile_confidence.md
     - Connect to Endpoints: user_guide/connect_endpoints.md
     - Run Experiments: user_guide/run_experiments.md
+    - Plotting: user_guide/plotting.md
   - API Reference:
     - reference/index.md
     - callbacks:
@@ -68,6 +69,8 @@ nav:
     - json_utils: reference/json_utils.md
     - plotting:
       - reference/plotting/index.md
+      - defaults: reference/plotting/defaults.md
+      - percentage: reference/plotting/percentage.md
     - prompt_utils: reference/prompt_utils.md
     - results: reference/results.md
     - runner: reference/runner.md
